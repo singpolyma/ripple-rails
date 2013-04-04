@@ -1,0 +1,12 @@
+This gem provides a simple facility for integrating the Ripple payment system into a Rails project.
+
+Create a file in your project at config/ripple.yml with two configuration keys:
+
+	:action: RippleController#notify
+	:address: ripple_address
+
+The action key should specify a particular action on a controller in your app.  When transactions are sent to the ripple address(es) specified, a request to that action will be simulated, with params[:transaction] set to an object representing the transaction data.
+
+If you do not specify an address, then all transactions on the Ripple network will be reported to your app.
+
+You may optionally specify the websocket address of a Ripple server as :websocket, otherwise the default will be the server at ripple.com.  Only transactions that have been validated by the server are reported, so if you trust the server than you can trust that the transactions are real.
