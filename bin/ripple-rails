@@ -21,7 +21,7 @@ controller = RippleController.new
 err "Ripple action #{controller}##{action} found." unless controller.respond_to?(action)
 
 EM.run {
-	ws = Faye::WebSocket::Client.new(Rippler::RIPPLE_URI)
+	ws = Faye::WebSocket::Client.new(config[:websocket] || Rippler::RIPPLE_URI)
 
 	ws.onopen = lambda do |event|
 		cmd = {'command' => 'subscribe', 'streams' => ['transactions']}
