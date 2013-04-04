@@ -1,65 +1,50 @@
 #!/usr/bin/env ruby
 
+lib = File.expand_path('../../lib', __FILE__)
+$LOAD_PATH.unshift(lib) unless $LOAD_PATH.include?(lib)
+
+require 'ripple-rails'
 require 'eventmachine'
 require 'faye/websocket'
 require 'rippler'
 require 'json'
 
-RIPPLE_URI = 'wss://s1.ripple.com:51233'
-
-def load_environment(file = '.')
-	if File.directory?(file) && File.exists?(File.expand_path("#{file}/config/environment.rb"))
-		require "rails"
-		require File.expand_path("#{file}/config/environment.rb")
-		if defined?(::Rails) && ::Rails.respond_to?(:application)
-			# Rails 3
-			::Rails.application.eager_load!
-		elsif defined?(::Rails::Initializer)
-			# Rails 2.3
-			$rails_rake_task = false
-			::Rails::Initializer.run :load_application_classes
-		end
-	elsif File.file?(file)
-		require File.expand_path(file)
-	end
-end
-
-def run_action(controller, action, params)
-	req = ActionDispatch::Request .new({'rack.input' => ''})
-	params.each do |(k,v)|
-		req[k] = v
-	end
-	controller.instance_variable_set(:@_request, req)
-	controller.send(action)
-end
-
 load_environment
+config = load_config
+controller, action = config && config[:action] ? config[:action].split(/#/, 2) : []
 
-unless defined?(RippleController)
-	warn 'No class RippleController found.'
-	exit 1
-end
+err 'Ripple action not properly configured.' unless controller && action
+err "No class #{controller} found for Ripple action." unless Module::const_defined?(controller)
 
 controller = RippleController.new
 
-unless controller.respond_to?(:notify)
-	warn 'No method RippleController#notify found.'
-	exit 1
-end
+err "Ripple action #{controller}##{action} found." unless controller.respond_to?(action)
 
 EM.run {
-	ws = Faye::WebSocket::Client.new(RIPPLE_URI)
+	ws = Faye::WebSocket::Client.new(Rippler::RIPPLE_URI)
 
 	ws.onopen = lambda do |event|
-		ws.send({'command' => 'subscribe', 'streams' => ['transactions']}.to_json)
-		# 'accounts' => ['address']
-		warn 'Monitoring for transactions...'
+		cmd = {'command' => 'subscribe', 'streams' => ['transactions']}
+		if config[:address]
+			adr = config[:address].is_a?(Array) ? config[:address] : [config[:address].to_s]
+			cmd.merge!('accounts' => adr)
+			warn "Monitoring for transactions to #{adr.inspect}..."
+		else
+			warn 'Monitoring for transactions...'
+		end
+
+		ws.send(cmd.to_json)
 	end
 
 	ws.onmessage = lambda do |event|
-		message = JSON.parse(event.data)
+		message = JSON.parse(event.data) rescue {}
 		if message['type'] == 'transaction' && message['validated'] == true && message['transaction']['TransactionType'] == 'Payment'
-			run_action(controller, :notify, {:transaction => Rippler::Transaction.new(message)})
+			begin
+				run_action(controller, :notify, {:transaction => Rippler::Transaction.new(message)})
+			rescue Exception
+				warn $!.inspect
+				exit 2
+			end
 		end
 	end
 
