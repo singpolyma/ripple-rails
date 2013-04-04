@@ -1,0 +1,78 @@
+#!/usr/bin/env ruby
+
+require 'eventmachine'
+require 'faye/websocket'
+require 'rippler'
+require 'json'
+
+RIPPLE_URI = 'wss://s1.ripple.com:51233'
+
+def load_environment(file = '.')
+	if File.directory?(file) && File.exists?(File.expand_path("#{file}/config/environment.rb"))
+		require "rails"
+		require File.expand_path("#{file}/config/environment.rb")
+		if defined?(::Rails) && ::Rails.respond_to?(:application)
+			# Rails 3
+			::Rails.application.eager_load!
+		elsif defined?(::Rails::Initializer)
+			# Rails 2.3
+			$rails_rake_task = false
+			::Rails::Initializer.run :load_application_classes
+		end
+	elsif File.file?(file)
+		require File.expand_path(file)
+	end
+end
+
+def run_action(controller, action, params)
+	req = ActionDispatch::Request .new({'rack.input' => ''})
+	params.each do |(k,v)|
+		req[k] = v
+	end
+	controller.instance_variable_set(:@_request, req)
+	controller.send(action)
+end
+
+load_environment
+
+unless defined?(RippleController)
+	warn 'No class RippleController found.'
+	exit 1
+end
+
+controller = RippleController.new
+
+unless controller.respond_to?(:notify)
+	warn 'No method RippleController#notify found.'
+	exit 1
+end
+
+EM.run {
+	ws = Faye::WebSocket::Client.new(RIPPLE_URI)
+
+	ws.onopen = lambda do |event|
+		ws.send({'command' => 'subscribe', 'streams' => ['transactions']}.to_json)
+		# 'accounts' => ['address']
+		warn 'Monitoring for transactions...'
+	end
+
+	ws.onmessage = lambda do |event|
+		message = JSON.parse(event.data)
+		if message['type'] == 'transaction' && message['validated'] == true && message['transaction']['TransactionType'] == 'Payment'
+			run_action(controller, :notify, {:transaction => Rippler::Transaction.new(message)})
+		end
+	end
+
+	ws.onerror = lambda do |event|
+		warn event["error"].inspect
+		EM.stop
+		exit 1
+	end
+
+	ws.onclose = lambda do |event|
+		ws = nil
+		warn 'Websocket connection closed'
+		EM.stop
+		exit 1
+	end
+}
