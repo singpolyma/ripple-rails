@@ -4,7 +4,7 @@ $LOAD_PATH.unshift(lib) unless $LOAD_PATH.include?(lib)
 
 Gem::Specification.new do |gem|
   gem.name          = "ripple-rails"
-  gem.version       = '0.1.0'
+  gem.version       = '0.2.0'
   gem.authors       = ["singpolyma"]
   gem.email         = ["singpolyma@singpolyma.net"]
   gem.description   = %q{Rails integration for Ripple payment notifications.}
