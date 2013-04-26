@@ -31,7 +31,8 @@ def load_config(file = '.')
 end
 
 def run_action(controller, action, params)
-	req = ActionDispatch::Request .new({'rack.input' => ''})
+	controller = controller.new
+	req = ActionDispatch::Request.new({'rack.input' => ''})
 	params.each do |(k,v)|
 		req[k] = v
 	end

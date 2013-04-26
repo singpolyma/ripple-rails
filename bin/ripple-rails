@@ -16,9 +16,9 @@ controller, action = config && config[:action] ? config[:action].split(/#/, 2) :
 err 'Ripple action not properly configured.' unless controller && action
 err "No class #{controller} found for Ripple action." unless Module::const_defined?(controller)
 
-controller = RippleController.new
+controller = Module::const_get(controller)
 
-err "Ripple action #{controller}##{action} found." unless controller.respond_to?(action)
+err "Ripple action #{controller}##{action} not found." unless controller.new.respond_to?(action)
 
 EM.run {
 	ws = Faye::WebSocket::Client.new(config[:websocket] || Rippler::RIPPLE_URI)
